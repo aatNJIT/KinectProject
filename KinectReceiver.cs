@@ -184,6 +184,7 @@ public partial class KinectReceiver : Node2D
         var projections = JsonConvert.DeserializeObject<Dictionary<string, List<float>>>(json);
         Vector2 spineBasePosition = projections.TryGetValue("SpineBase", out var spineBaseCoordinates) ? new Vector2(spineBaseCoordinates[0], spineBaseCoordinates[1]) : Vector2.Zero;
         float offsetX = spineBasePosition.X - this.theremin.Position.X;
+        float offsetY = spineBasePosition.Y - this.theremin.Position.Y;
 
         foreach (var projection in projections)
         {
@@ -192,7 +193,7 @@ public partial class KinectReceiver : Node2D
             {
                 joints[jointName] = new Joint(jointName);
             }
-            joints[jointName].Position = new Vector2(projection.Value[0] - offsetX, projection.Value[1]);
+            joints[jointName].Position = new Vector2(projection.Value[0] - offsetX, projection.Value[1] - offsetY);
         }
     }
 
