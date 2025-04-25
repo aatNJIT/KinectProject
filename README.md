@@ -12,7 +12,7 @@
    - If you don't have the Kinect SDK, download and install it from the following link:
      - [Kinect SDK](https://learn.microsoft.com/en-us/previous-versions/windows/kinect/dn799271(v=ieb.10)?redirectedfrom=MSDN)
 
-2. **Run Cake23**
+2. **Run Cake23 As Administrator**
    - Run `cake23.exe`.
 
 3. **Connect to Kinect**
