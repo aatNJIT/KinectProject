@@ -3,98 +3,24 @@ using System.Collections.Generic;
 using Godot;
 using Microsoft.AspNet.SignalR.Client;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Environment = System.Environment;
+using Vector2 = Godot.Vector2;
 
 namespace KinectProject;
 
 public partial class KinectReceiver : Node2D
 {
-    [ExportGroup("Server Settings")] 
-    [Export] private string _serverDomain = System.Environment.MachineName;
+    [ExportGroup("Server Settings")] [Export]
+    private string _serverDomain = Environment.MachineName;
+
     [Export] private int _serverPort = 9000;
 
-    [ExportGroup("Visual Settings")] 
-    [Export] private float _jointRadius = 6F;
-    [Export] private float _headRadius = 15F;
-    [Export] private float _bodyLineThickness = .5F;
-
-    [ExportGroup("Audio Settings")] 
-    [Export] private string _audioFile = "sine440hz.wav";
-    [Export] private bool _useGeneratedSound;
-
-    [ExportSubgroup("Generator Settings")] 
-    [Export] private float _sampleRate = 44100F;
-    [Export] private float _baseFrequency = 440.0f;
-
-    [ExportSubgroup("Playback Settings")] 
-    [Export] private float _minPitch = 0.01F;
-    [Export] private float _maxPitch = 10F;
-    [Export] private float _minVolume = -24F;
-    [Export] private float _maxVolume = 24F;
-
-    public interface ISoundStrategy
-    {
-        void Play();
-        void Setup(AudioStreamPlayer2D player, Vector2 position, float sampleRate, string fileName);
-        void UpdatePitch(float pitch, float baseFrequency);
-        void UpdateVolume(float volumeDb);
-        string GetPitch(float currentPitch, float baseFrequency);
-    }
-
-    public class GeneratedSoundStrategy : ISoundStrategy
-    {
-        private AudioStreamPlayer2D _player;
-        private AudioStreamGeneratorPlayback _playback;
-        private double _phase;
-        private float _sampleRate;
-
-        public void Setup(AudioStreamPlayer2D player, Vector2 position, float sampleRate, string fileName = "")
-        {
-            _player = player;
-            _sampleRate = sampleRate;
-            _player.Position = position;
-            var generator = new AudioStreamGenerator { MixRate = sampleRate, BufferLength = 0.1F };
-            _player.Stream = generator;
-        }
-
-        public void UpdatePitch(float pitch, float baseFrequency)
-        {
-            GenerateSound(baseFrequency * pitch);
-        }
-
-        public void UpdateVolume(float volumeDb)
-        {
-            _player.VolumeDb = volumeDb;
-        }
-
-        public void Play()
-        {
-            _player.Play();
-            _playback = (AudioStreamGeneratorPlayback)_player.GetStreamPlayback();
-        }
-
-        public string GetPitch(float currentPitch, float baseFrequency)
-        {
-            return $"Freq: {baseFrequency * currentPitch:F0} Hz";
-        }
-
-        private void GenerateSound(float frequency)
-        {
-            var increment = frequency / _sampleRate;
-            var framesAvailable = _playback.GetFramesAvailable();
-            if (framesAvailable == 0) return;
-            for (var i = 0; i < framesAvailable; i++)
-            {
-                _playback.PushFrame(Vector2.One * (float)Mathf.Sin(_phase * Mathf.Tau));
-                _phase = Mathf.PosMod(_phase + increment, 1.0);
-            }
-        }
-    }
-
-    public class AudioFileSoundStrategy : ISoundStrategy
+    public class AudioFileSoundStrategy
     {
         private AudioStreamPlayer2D _player;
 
-        public void Setup(AudioStreamPlayer2D player, Vector2 position, float sampleRate, string fileName)
+        public void Setup(AudioStreamPlayer2D player, Vector2 position, string fileName)
         {
             _player = player;
             _player.Position = position;
@@ -105,329 +31,555 @@ public partial class KinectReceiver : Node2D
                 return;
             }
 
+            _player.MaxPolyphony = 2;
             _player.Stream = audioStream;
         }
 
-        public void UpdatePitch(float pitch, float baseFrequency)
-        {
-            _player.PitchScale = pitch;
-        }
-
-        public void UpdateVolume(float volumeDb)
-        {
-            _player.VolumeDb = volumeDb;
-        }
-
-        public void Play()
-        {
-            _player.Play();
-        }
-
-        public string GetPitch(float currentPitch, float baseFrequency)
-        {
-            return $"Pitch: {currentPitch:F2}";
-        }
+        public void UpdatePitch(float pitch) => _player.PitchScale = pitch;
+        public void UpdateVolume(float volume) => _player.VolumeDb = volume;
+        public void Play() => _player.Play();
+        public void Stop() => _player.Stop();
     }
 
-    private class Joint
+    public class Joint
     {
-        public Vector2 Position { get; set; } = Vector2.Zero;
+        public Vector2 Position { get; set; }
         public int TrackingState { get; set; }
         public bool IsTracked => TrackingState == 2;
     }
 
-    private class Bone(string start, string end, Color color, string displayName)
+    public partial class HandCone : Area2D
     {
-        private string DisplayName { get; } = displayName;
-        public string StartJointName { get; } = start;
-        public string EndJointName { get; } = end;
-        public Color Color { get; } = color;
+        private const float MaxRotationChangeDegrees = 20F;
+        private const float MovementThreshold = 1F;
+        private const float ConeAngleDegrees = 30F;
+        private const float ConeLength = 850F;
+        private static readonly Color ConeColor = new(.3F, .3F, .3F, .1F);
 
-        public string GetDisplayText(Joint joint)
+        private readonly CollisionPolygon2D _collisionPolygon = new();
+        public readonly Polygon2D VisualPolygon = new();
+        public Joint HandJoint { get; set; }
+
+        private Vector2 _direction = Vector2.Up;
+        private Vector2 _previousPosition;
+        private float _currentRotation;
+        private readonly float _coneAngleRadians = Mathf.DegToRad(ConeAngleDegrees);
+
+        public override void _Ready()
         {
-            var stateName = joint.TrackingState switch
+            ZIndex = 1;
+            Monitoring = true;
+            Monitorable = true;
+            CollisionLayer = 0;
+            CollisionMask = 1;
+
+            VisualPolygon.Color = ConeColor;
+
+            AddChild(_collisionPolygon);
+            AddChild(VisualPolygon);
+
+            BodyEntered += OnBodyEntered;
+            BodyExited += OnBodyExited;
+        }
+
+        private static void OnBodyEntered(Node body)
+        {
+            if (body is Person person)
             {
-                0 => "NotTracked",
-                1 => "Inferred",
-                2 => "Tracked",
-                _ => "Unknown"
-            };
-            return $"{DisplayName}: {stateName}";
+                person.SetMouthRadius();
+            }
         }
-    }
 
-    private class Theremin
-    {
-        public const float BodyWidth = 125F;
-        public const float BodyHeight = 24F;
-        public const float PitchAntennaHeight = 150F;
-        public const float VolumeAntennaWidth = 80F;
-        public const float AntennaThickness = 2.5F;
-        public const float KnobRadius = 6F;
-        
-        public float CurrentPitch { get; set; } = 1F;
-        public float CurrentVolume { get; set; }
-
-        public Rect2 BodyRect { get; }
-        public Color BodyColor { get; }
-        public Vector2 Position { get; }
-        public Color PitchColor { get; }
-        public Color VolumeColor { get; }
-        public Color BodyBorderColor { get; }
-        
-        public Vector2 PitchAntennaBase { get; }
-        public Vector2 PitchAntennaEnd { get; }
-        
-        public Vector2 VolumeAntennaBase { get; }
-        public Vector2 VolumeAntennaEnd { get; }
-        
-        public Vector2 PitchKnobPosition { get; set; }
-        public Vector2 VolumeKnobPosition { get; set; }
-
-        public Theremin(Vector2 position)
+        private static void OnBodyExited(Node body)
         {
-            Position = position;
-            PitchAntennaBase = new Vector2(Position.X + BodyWidth / 2F, Position.Y - BodyHeight / 2F);
-            PitchAntennaEnd = new Vector2(Position.X + BodyWidth / 2F, Position.Y - BodyHeight / 2F - PitchAntennaHeight);
-            VolumeAntennaBase = new Vector2(Position.X - BodyWidth / 2F - 1, Position.Y + 2);
-            VolumeAntennaEnd = new Vector2(Position.X - BodyWidth / 2F - 1 - VolumeAntennaWidth, Position.Y + 2);
-            BodyRect = new Rect2(Position - new Vector2(BodyWidth / 2F - 1F, BodyHeight / 2F - 3F), new Vector2(BodyWidth, BodyHeight));
-            PitchColor = Colors.Green;
-            VolumeColor = Colors.Red;
-            BodyColor = Colors.DimGray;
-            BodyBorderColor = Colors.Black;
+            if (body is Person person)
+            {
+                person.ResetMouthRadius();
+            }
+        }
+
+        public override void _PhysicsProcess(double delta)
+        {
+            if (HandJoint?.IsTracked != true)
+            {
+                return;
+            }
+
+            UpdateConeShape();
+        }
+
+        private void UpdateConeShape()
+        {
+            Position = HandJoint.Position + new Vector2(0f, -41f);
+
+            var normalizedDirection = _direction.Normalized();
+            var perpendicular = new Vector2(-normalizedDirection.Y, normalizedDirection.X);
+            var halfAngle = _coneAngleRadians / 2f;
+            var edge1 = (normalizedDirection * Mathf.Cos(halfAngle) + perpendicular * Mathf.Sin(halfAngle)) * ConeLength;
+            var edge2 = (normalizedDirection * Mathf.Cos(halfAngle) - perpendicular * Mathf.Sin(halfAngle)) * ConeLength;
+            var points = new[] { Vector2.Zero, edge1, edge2 };
+
+            _collisionPolygon.Polygon = points;
+            VisualPolygon.Polygon = points;
+
+            var movementDirection = Position - _previousPosition;
+            _previousPosition = Position;
+
+            if (movementDirection.Length() < MovementThreshold)
+            {
+                return;
+            }
+
+            var rotationChange = movementDirection.X switch
+            {
+                < 0 => -1f,
+                > 0 => 1f,
+                _ => 0f
+            };
+
+            _currentRotation = Mathf.Clamp(_currentRotation + rotationChange, -MaxRotationChangeDegrees, MaxRotationChangeDegrees);
+            _collisionPolygon.RotationDegrees = _currentRotation;
+            VisualPolygon.RotationDegrees = _currentRotation;
         }
     }
 
-    private readonly Bone[] _skeletonBones =
-    [
-        new("SpineBase", "SpineMid", Colors.Blue, "Mid Spine"),
-        new("SpineMid", "Neck", Colors.Blue, "Neck"),
-        new("Neck", "Head", Colors.Blue, "Head"),
-        new("SpineShoulder", "ShoulderLeft", Colors.Green, "Left Shoulder"),
-        new("SpineShoulder", "ShoulderRight", Colors.Yellow, "Right Shoulder"),
-        new("ShoulderLeft", "ElbowLeft", Colors.Green, "Left Elbow"),
-        new("ElbowLeft", "WristLeft", Colors.Green, "Left Wrist"),
-        new("WristLeft", "HandLeft", Colors.Green, "Left Hand"),
-        new("ShoulderRight", "ElbowRight", Colors.Yellow, "Right Elbow"),
-        new("ElbowRight", "WristRight", Colors.Yellow, "Right Wrist"),
-        new("WristRight", "HandRight", Colors.Yellow, "Right Hand"),
-        new("HipLeft", "KneeLeft", Colors.Cyan, "Left Knee"),
-        new("KneeLeft", "AnkleLeft", Colors.Cyan, "Left Ankle"),
-        new("AnkleLeft", "FootLeft", Colors.Cyan, "Left Foot"),
-        new("HipRight", "KneeRight", Colors.Magenta, "Right Knee"),
-        new("KneeRight", "AnkleRight", Colors.Magenta, "Right Ankle"),
-        new("AnkleRight", "FootRight", Colors.Magenta, "Right Foot"),
-        new("HipLeft", "HipRight", Colors.PaleGoldenrod, "Right Hip"),
-        new("HipRight", "HipLeft", Colors.PaleGoldenrod, "Left Hip")
-    ];
+    public partial class Stage : Node2D
+    {
+        private readonly Color _gridColor = new(.3F, .3F, .3F, .15F);
+        private readonly int[] _peoplePerRow = [10, 8, 6, 4];
+        private float _cellGridSize;
 
-    private bool _showStates;
-    private Theremin _theremin;
-    private IHubProxy _hubProxy;
-    private Joint _leftHandJoint; 
+        public float ScreenWidth { get; private set; }
+        public float ScreenHeight { get; private set; }
+
+        public override void _Ready()
+        {
+            var viewportRect = GetViewport().GetVisibleRect();
+            ScreenWidth = viewportRect.Size.X;
+            ScreenHeight = viewportRect.Size.Y;
+            OnStageResize(ScreenWidth, ScreenHeight);
+            ZIndex = -1;
+        }
+
+        public void OnStageResize(float screenWidth, float screenHeight)
+        {
+            ScreenWidth = screenWidth;
+            ScreenHeight = screenHeight;
+            Position = new Vector2(ScreenWidth / 2F, ScreenHeight / 2F);
+            _cellGridSize = Math.Min(ScreenWidth / 10F, ScreenHeight / 10F);
+            PopulatePeople();
+        }
+
+        private void PopulatePeople()
+        {
+            foreach (var child in GetChildren()) child.QueueFree();
+
+            var totalRows = _peoplePerRow.Length;
+            var vOrigin = -((totalRows - 1) * _cellGridSize);
+
+            for (var rowIndex = 0; rowIndex < totalRows; rowIndex++)
+            {
+                var peopleInRow = _peoplePerRow[rowIndex];
+                var y = vOrigin + rowIndex * _cellGridSize;
+                var rowWidth = (peopleInRow - 1F) * _cellGridSize;
+                var x = -rowWidth / 2f;
+
+                for (var i = 0; i < peopleInRow; i++)
+                {
+                    AddChild(
+                        new Person
+                        {
+                            Position = new Vector2(x + i * _cellGridSize, y)
+                        }
+                    );
+                }
+            }
+        }
+
+        public override void _Draw()
+        {
+            
+            for (var x = -ScreenWidth; x <= ScreenWidth; x += _cellGridSize)
+                DrawLine(new Vector2(x, -ScreenHeight), new Vector2(x, ScreenHeight), _gridColor, -1, true);
+
+            for (var y = -ScreenHeight; y <= ScreenHeight; y += _cellGridSize)
+                DrawLine(new Vector2(-ScreenWidth, y), new Vector2(ScreenWidth, y), _gridColor, -1, true);
+        }
+    }
+
+    public partial class Person : StaticBody2D
+    {
+        private const float MinMouthRadius = 3F;
+        private const float MaxMouthRadius = 7F;
+        private const float MaxSwayAngleDeg = 2F;
+        private const float SwaySpeed = 5F;
+        private const float MouthLerpSpeed = 7F;
+        private const float MinLightEnergy = 1F;
+        private const float MaxLightEnergy = 1.5F;
+        private const float MinPitch = .1F;
+        private const float MaxPitch = 12F;
+        private const float MinVolumeDb = -24F;
+        private const float MaxVolumeDb = -8F;
+
+        private AudioFileSoundStrategy _soundStrategy;
+        private string _currentAnimation = "idle";
+        private string _targetAnimation = "idle";
+        private AnimatedSprite2D _sprite;
+        private Light2D _pointLight;
+
+        private Vector2 _targetScale = new(1.2F, 1.2F);
+        private float _currentMouthRadius;
+        private float _targetMouthRadius;
+        private float _animatedMouthRadius;
+        private float _swayTime;
+        private float _vibratoTime;
+        private float _pitchTime;
+        private float _pitchPhase;
+        private string _spriteType;
+
+        public override void _Ready()
+        {
+            _spriteType = GD.Randf() < 0.5F ? "Tie" : "Ribbon";
+            CollisionLayer = 1;
+            CollisionMask = 0;
+
+            var player = new AudioStreamPlayer2D();
+            _soundStrategy = new AudioFileSoundStrategy();
+
+            var collisionShape = new CollisionShape2D
+            {
+                Shape = new CircleShape2D { Radius = 15F },
+                Position = new Vector2(0F, -20F)
+            };
+
+            _sprite = new AnimatedSprite2D
+            {
+                Scale = _targetScale,
+                TextureFilter = TextureFilterEnum.LinearWithMipmapsAnisotropic,
+                Material = new CanvasItemMaterial
+                {
+                    LightMode = CanvasItemMaterial.LightModeEnum.Normal
+                }
+            };
+
+            _pointLight = new PointLight2D
+            {
+                Enabled = true,
+                Visible = true,
+                BlendMode = Light2D.BlendModeEnum.Mix,
+                Texture = ResourceLoader.Load<Texture2D>("Sprites/Lights/light_smoothest.png"),
+                Color = Colors.WhiteSmoke,
+            };
+
+            SetupSpriteFrames();
+            _soundStrategy.Setup(player, Position, "Sounds/sine440hz.wav");
+            _pitchPhase = (float)GD.RandRange(0F, 2F * Mathf.Pi);
+
+            AddChild(_sprite);
+            AddChild(_pointLight);
+            AddChild(player);
+            AddChild(collisionShape);
+        }
+
+        private void SetupSpriteFrames()
+        {
+            var spriteFrames = new SpriteFrames();
+            var basePath = _spriteType == "Tie" ? "Sprites/Person/Tie/" : "Sprites/Person/Ribbon/";
+
+            spriteFrames.AddAnimation("idle");
+            spriteFrames.AddFrame("idle", ResourceLoader.Load<Texture2D>(basePath + "idle.png"));
+
+            spriteFrames.AddAnimation("idle_blink");
+            spriteFrames.AddFrame("idle_blink", ResourceLoader.Load<Texture2D>(basePath + "idle_blink.png"));
+
+            spriteFrames.AddAnimation("arms_mid");
+            spriteFrames.AddFrame("arms_mid", ResourceLoader.Load<Texture2D>(basePath + "arms_mid.png"));
+
+            spriteFrames.AddAnimation("arms_high");
+            spriteFrames.AddFrame("arms_high", ResourceLoader.Load<Texture2D>(basePath + "arms_high.png"));
+
+            _sprite.SpriteFrames = spriteFrames;
+            _sprite.Animation = "idle";
+            _sprite.Play();
+        }
+
+        public override void _Process(double delta)
+        {
+            var deltaF = (float)delta;
+
+            _currentMouthRadius = Mathf.Lerp(_currentMouthRadius, _targetMouthRadius, MouthLerpSpeed * deltaF);
+            _sprite.Scale = _sprite.Scale.Lerp(_targetScale, MouthLerpSpeed * deltaF);
+            
+            
+            UpdateBodyAnimation();
+            if (_currentAnimation != _targetAnimation)
+            {
+                _sprite.Play(_currentAnimation = _targetAnimation);
+            }
+
+            if (_currentMouthRadius > 0.01F)
+            {
+                UpdateMouthAnimation(deltaF);
+                UpdateSound();
+            }
+            else
+            {
+                ResetAnimation();
+                _soundStrategy.Stop();
+            }
+        }
+
+        private void UpdateBodyAnimation()
+        {
+            if (_currentMouthRadius <= 0.01F)
+            {
+                _targetAnimation = "idle";
+                _pointLight.Energy = MinLightEnergy;
+                return;
+            }
+
+            var normalizedRadius = (_currentMouthRadius - MinMouthRadius) / (MaxMouthRadius - MinMouthRadius);
+            var basePitch = Mathf.Lerp(MinPitch, MaxPitch, normalizedRadius);
+            var oscillation = Mathf.Sin(_pitchTime + _pitchPhase);
+            var pitch = Mathf.Clamp(basePitch + oscillation * MaxPitch, MinPitch, MaxPitch);
+            var normalizedPitch = (pitch - MinPitch) / (MaxPitch - MinPitch);
+            _targetAnimation = normalizedPitch > .5F ? "arms_high" : "arms_mid";
+        }
+
+        private void UpdateMouthAnimation(float delta)
+        {
+            _pointLight.Energy = MaxLightEnergy;
+            _swayTime += delta;
+            _vibratoTime += delta;
+            _pitchTime += delta;
+            Rotation = Mathf.DegToRad(MaxSwayAngleDeg) * Mathf.Sin(_swayTime * SwaySpeed);
+            var mouthPulse = Mathf.Sin(_vibratoTime * Mathf.Sin(_vibratoTime));
+            _animatedMouthRadius = Mathf.Clamp(_currentMouthRadius + mouthPulse, MinMouthRadius, MaxMouthRadius);
+            // var lightIntensity = Mathf.Lerp(MinLightEnergy, MaxLightEnergy, (_animatedMouthRadius - MinMouthRadius) / (MaxMouthRadius - MinMouthRadius));
+            // _pointLight.Energy = lightIntensity;
+        }
+
+        private void UpdateSound()
+        {
+            if (_currentMouthRadius <= 0.01F)
+            {
+                _soundStrategy.Stop();
+                return;
+            }
+
+            var normalizedRadius = (_currentMouthRadius - MinMouthRadius) / (MaxMouthRadius - MinMouthRadius);
+            var basePitch = Mathf.Lerp(MinPitch, MaxPitch * .5F, normalizedRadius);
+            var oscillation = Mathf.Sin(_pitchTime * 2F + _pitchPhase) * .5F;
+            var pitch = Mathf.Clamp(basePitch + oscillation * MaxPitch * .5F, MinPitch, MaxPitch);
+            var volume = Mathf.Lerp(MinVolumeDb, MaxVolumeDb, _animatedMouthRadius / MaxMouthRadius);
+            _soundStrategy.UpdatePitch(pitch);
+            _soundStrategy.UpdateVolume(volume);
+            _soundStrategy.Play();
+        }
+
+        private void ResetAnimation()
+        {
+            _swayTime = 0F;
+            _vibratoTime = 0F;
+            Rotation = 0F;
+            _animatedMouthRadius = 0F;
+            _targetAnimation = "idle";
+        }
+
+        public void SetMouthRadius()
+        {
+            _targetMouthRadius = (float)GD.RandRange(MinMouthRadius, MaxMouthRadius);
+            _targetScale = new Vector2(1.3F, 1.3F);
+        }
+
+        public void ResetMouthRadius()
+        {
+            _targetMouthRadius = 0F;
+            _targetScale = new Vector2(1.2F, 1.2F);
+        }
+    }
+
+    private Stage _stage;
+    private Joint _leftHandJoint;
     private Joint _rightHandJoint;
+    private HandCone _rightHandCone;
     private FontFile _defaultFont;
-    private AudioStream _audioStream;
     private HubConnection _connection;
-    private AudioStreamPlayer2D _player;
-    private ISoundStrategy _soundStrategy;
-    private readonly Dictionary<string, Joint> _joints = new(32);
+    private IHubProxy _hubProxy;
+    private ColorRect _vignetteColorRect;
+    private Vector2 _leftHandTargetPosition;
+    private Vector2 _rightHandTargetPosition;
+    private Vector2 _previousRightHandTargetPosition;
+    private const float KinectDepthCameraWidth = 512F;
+    private const float KinectDepthCameraHeight = 424F;
+    private const float HandLerpSpeed = 15F;
+    private const float PanLerpSpeed = .25F;
+    private const float MaxPanDeviation = 10F;
+    private const float PanSpeed = 0.1F;
 
     public override void _Ready()
     {
-        _defaultFont = new FontFile { FixedSize = 16 };
+        _defaultFont = new FontFile
+        {
+            FixedSize = 16
+        };
         _connection = new HubConnection($"http://{_serverDomain}:{_serverPort}/signalr");
         _hubProxy = _connection.CreateHubProxy("Kinect2Hub");
-        var viewportRect = GetViewport().GetVisibleRect();
-        _theremin = new Theremin(new Vector2(viewportRect.Size.X / 2, viewportRect.Size.Y / 2));
+        GetTree().Root.SizeChanged += OnResize;
         SetupCallbacks();
         StartConnection();
-        SetupAudioPlayer();
+        _stage = new Stage();
+        _leftHandJoint = new Joint();
+        _rightHandJoint = new Joint();
+        _rightHandCone = new HandCone();
+        _rightHandCone.HandJoint = _rightHandJoint;
+        var vignetteLayer = new CanvasLayer { Layer = 0 };
+        vignetteLayer.AddChild(_vignetteColorRect = new ColorRect
+        {
+            Material = new ShaderMaterial { Shader = ResourceLoader.Load<Shader>("Shaders/vignette.gdshader") },
+            Size = GetViewport().GetVisibleRect().Size,
+        });
+        AddChild(_stage);
+        AddChild(_rightHandCone);
+        AddChild(vignetteLayer);
     }
 
     private void SetupCallbacks()
     {
-        _hubProxy.On<string, string>("OnBody", (states, positions) =>
-        {
-            UpdateJointPositions(positions);
-            UpdateJointStates(states);
-            UpdateThereminControls();
-        });
-
+        _hubProxy.On<string, string>("OnBody", UpdateHandData);
         _connection.Closed += () => GD.PrintErr("SignalR connection closed...");
-        _connection.Error += (exception) => GD.PrintErr($"SignalR connection error: {exception.Message}");
+        _connection.Error += exception => GD.PrintErr($"SignalR connection error: {exception.Message}");
     }
 
     private void StartConnection()
     {
         _connection.Start().ContinueWith(task =>
         {
-            GD.Print(task.IsFaulted ? $"SignalR connection error: {task.Exception?.GetBaseException().Message}" : "Connected to SignalR...");
+            GD.Print(task.IsFaulted
+                ? $"SignalR connection error: {task.Exception?.GetBaseException().Message}"
+                : "Connected to SignalR...");
         });
     }
 
-    private void SetupAudioPlayer()
+    private void UpdateHandData(string states, string positions)
     {
-        _player = new AudioStreamPlayer2D();
-        _soundStrategy = _useGeneratedSound ? new GeneratedSoundStrategy() : new AudioFileSoundStrategy();
-        _soundStrategy.Setup(_player, _theremin.Position, _sampleRate, _audioFile);
-        AddChild(_player);
-        _soundStrategy.Play();
+        UpdateHandPositions(positions);
+        UpdateHandStates(states);
     }
 
-    private void UpdateJointPositions(string positionsJson)
+    private void OnResize()
+    {
+        var viewportRect = GetViewport().GetVisibleRect();
+        _vignetteColorRect.Size = viewportRect.Size;
+        _stage.OnStageResize(viewportRect.Size.X, viewportRect.Size.Y);
+    }
+
+    private void UpdateHandPositions(string positionsJson)
     {
         var projections = JsonConvert.DeserializeObject<Dictionary<string, List<float>>>(positionsJson);
         if (projections.Count == 0) return;
-        var spineBasePosition = projections.TryGetValue("SpineBase", out var spineBaseCoordinates) ? new Vector2(spineBaseCoordinates[0], spineBaseCoordinates[1]) : Vector2.Zero;
-        var offsetX = spineBasePosition.X - _theremin.Position.X;
-        var offsetY = spineBasePosition.Y - _theremin.Position.Y;
-        foreach (var (jointName, entry) in projections)
+
+        const float sensitivity = 1.5f;
+        var spineBase = projections.TryGetValue("SpineBase", out var spineBaseCoordinates)
+            ? new Vector2(spineBaseCoordinates[0], spineBaseCoordinates[1])
+            : Vector2.Zero;
+        var scaleX = _stage.ScreenWidth / KinectDepthCameraWidth;
+        var scaleY = _stage.ScreenHeight / KinectDepthCameraHeight;
+
+        if (projections.TryGetValue("HandLeft", out var leftHandPositions) && leftHandPositions.Count >= 2)
         {
-            if (!_joints.TryGetValue(jointName, out var joint))
-            {
-                joint = new Joint();
-                
-                switch (jointName)
-                {
-                    case "HandLeft":
-                        _leftHandJoint = joint;
-                        break;
-                    case "HandRight":
-                        _rightHandJoint = joint;
-                        break;
-                }
-                
-                _joints[jointName] = joint;
-            }
-            joint.Position = new Vector2(entry[0] - offsetX, entry[1] - offsetY);
+            _leftHandTargetPosition = CalculateHandPosition(leftHandPositions, spineBase, scaleX, scaleY, sensitivity);
+        }
+
+        if (projections.TryGetValue("HandRight", out var rightHandPositions) && rightHandPositions.Count >= 2)
+        {
+            _rightHandTargetPosition =
+                CalculateHandPosition(rightHandPositions, spineBase, scaleX, scaleY, sensitivity);
         }
     }
 
-    private void UpdateJointStates(string statesJson)
+    private Vector2 CalculateHandPosition(List<float> handPositions, Vector2 spineBase, float scaleX,
+        float scaleY,
+        float sensitivity)
+    {
+        var relativeX = (handPositions[0] - spineBase.X) * sensitivity;
+        var relativeY = (spineBase.Y - handPositions[1]) * sensitivity;
+        var scaledX = relativeX * scaleX + _stage.ScreenWidth / 2F;
+        var scaledY = _stage.ScreenHeight - relativeY * scaleY;
+        return new Vector2(
+            Mathf.Clamp(scaledX, 0, _stage.ScreenWidth),
+            Mathf.Clamp(scaledY, 0, _stage.ScreenHeight)
+        );
+    }
+
+    private void UpdateHandStates(string statesJson)
     {
         var bodyData = JsonConvert.DeserializeObject<Dictionary<string, object>>(statesJson);
         if (!bodyData.TryGetValue("Joints", out var jointsObj)) return;
-        var jointsData = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, object>>>(jointsObj.ToString());
-        foreach (var (jointKey, value) in jointsData)
-        {
-            if (!value.TryGetValue("TrackingState", out var trackingState)) continue;
-            if (int.TryParse(trackingState.ToString(), out var state))
-            {
-                _joints[jointKey].TrackingState = state;
-            }
-        }
-    }
+        var jointsData = ((JObject)jointsObj).ToObject<Dictionary<string, Dictionary<string, object>>>();
+        if (jointsData == null) return;
 
-    private void UpdateThereminControls()
-    {
-        UpdatePitchControl();
-        UpdateVolumeControl();
-    }
+        if (jointsData.TryGetValue("HandLeft", out var leftHandStates) &&
+            leftHandStates.TryGetValue("TrackingState", out var leftHandState) &&
+            int.TryParse(leftHandState.ToString(), out var leftHandStateInt))
+        {
+            _leftHandJoint.TrackingState = leftHandStateInt;
+        }
 
-    private void UpdatePitchControl()
-    {
-        if (_rightHandJoint is { IsTracked: true })
+        if (jointsData.TryGetValue("HandRight", out var rightHandStates) &&
+            rightHandStates.TryGetValue("TrackingState", out var rightHandState) &&
+            int.TryParse(rightHandState.ToString(), out var rightHandStateInt))
         {
-            var pitchAntennaBaseY = _theremin.Position.Y - Theremin.BodyHeight / 2F;
-            var distanceFromBase = pitchAntennaBaseY - _rightHandJoint.Position.Y;
-            var normalizedDistance = Mathf.Clamp(distanceFromBase / Theremin.PitchAntennaHeight, 0F, 1F);
-            _theremin.CurrentPitch = _minPitch + normalizedDistance * (_maxPitch - _minPitch);
-            _soundStrategy.UpdatePitch(_theremin.CurrentPitch, _baseFrequency);
-            _theremin.PitchKnobPosition = new Vector2(_theremin.Position.X + Theremin.BodyWidth / 2F, pitchAntennaBaseY - normalizedDistance * Theremin.PitchAntennaHeight);
-        }
-        else
-        {
-            _theremin.CurrentPitch = _minPitch;
-            _soundStrategy.UpdatePitch(_minPitch, _baseFrequency);
-            _theremin.PitchKnobPosition = new Vector2(_theremin.Position.X + Theremin.BodyWidth / 2F, _theremin.Position.Y - Theremin.BodyHeight / 2F);
-        }
-    }
-
-    private void UpdateVolumeControl()
-    {
-        if (_leftHandJoint is { IsTracked: true })
-        {
-            var volumeAntennaBaseX = _theremin.Position.X - Theremin.BodyWidth / 2F;
-            var distanceFromBase = volumeAntennaBaseX - _leftHandJoint.Position.X;
-            var normalizedDistance = Mathf.Clamp(distanceFromBase / Theremin.VolumeAntennaWidth, 0F, 1F);
-            _theremin.CurrentVolume = _minVolume + normalizedDistance * (_maxVolume - _minVolume);
-            _soundStrategy.UpdateVolume(_theremin.CurrentVolume);
-            _theremin.VolumeKnobPosition = new Vector2(volumeAntennaBaseX - normalizedDistance * Theremin.VolumeAntennaWidth, _theremin.Position.Y);
-        }
-        else
-        {
-            _soundStrategy.UpdateVolume(_minVolume);
-            _theremin.VolumeKnobPosition = new Vector2(_theremin.Position.X - Theremin.BodyWidth / 2F, _theremin.Position.Y);
+            _rightHandJoint.TrackingState = rightHandStateInt;
         }
     }
 
     public override void _Draw()
     {
-        DrawTheremin();
+        const float handRadius = 40F;
 
-        if (_joints.Count == 0) return;
-
-        foreach (var joint in _joints)
+        if (_leftHandJoint.IsTracked)
         {
-            if (!joint.Value.IsTracked) continue;
-            var radius = joint.Key == "Head" ? _headRadius : _jointRadius;
-            DrawCircle(joint.Value.Position, radius, Colors.Red, true, -1F, true);
+            DrawCircle(_leftHandJoint.Position, handRadius, Colors.Gray);
+            DrawCircle(_leftHandJoint.Position, handRadius, Colors.DimGray, false, 1F, true);
         }
 
-        foreach (var bone in _skeletonBones)
+        if (_rightHandJoint.IsTracked)
         {
-            if (!_joints.TryGetValue(bone.StartJointName, out var startJoint) || !_joints.TryGetValue(bone.EndJointName, out var endJoint)) continue;
-            if (!startJoint.IsTracked || !endJoint.IsTracked) continue;
-            DrawLine(startJoint.Position, endJoint.Position, bone.Color, _bodyLineThickness, true);
-            if (_showStates)
-            {
-                DrawString(_defaultFont, endJoint.Position, bone.GetDisplayText(endJoint), HorizontalAlignment.Center, -1F, 16, Colors.White);
-            }
+            DrawCircle(_rightHandJoint.Position, handRadius, Colors.Gray);
+            DrawCircle(_rightHandJoint.Position, handRadius, Colors.DimGray, false, 1F, true);
+            var stickDirection = new Vector2(0, -1).Rotated(_rightHandCone.VisualPolygon.Rotation).Normalized();
+            var stickStartPoint = _rightHandJoint.Position + stickDirection * handRadius;
+            var stickEndPoint = stickStartPoint + stickDirection * 150F;
+            DrawLine(stickStartPoint, stickEndPoint, Colors.DimGray, 4F, true);
         }
-
-        var offsetVec = new Vector2(0, 40);
-        if (_leftHandJoint is { IsTracked: true })
-        {
-            DrawString(_defaultFont, _leftHandJoint.Position + offsetVec, $"Vol: {_player.VolumeDb:F1} dB", HorizontalAlignment.Left, -1F, 16, Colors.White);
-        }
-        if (_rightHandJoint is { IsTracked: true })
-        {
-            DrawString(_defaultFont, _rightHandJoint.Position + offsetVec, _soundStrategy.GetPitch(_theremin.CurrentPitch, _baseFrequency), HorizontalAlignment.Left, -1F, 16, Colors.White);
-        }
-    }
-
-    private void DrawTheremin()
-    {
-        //body
-        DrawRect(_theremin.BodyRect, _theremin.BodyColor, true, -1F, true);
-        DrawRect(_theremin.BodyRect, _theremin.BodyBorderColor, false, 1.5F, true);
-
-        //antennas
-        DrawLine(_theremin.PitchAntennaBase, _theremin.PitchAntennaEnd, _theremin.PitchColor, Theremin.AntennaThickness, true);
-        DrawLine(_theremin.VolumeAntennaBase, _theremin.VolumeAntennaEnd, _theremin.VolumeColor, Theremin.AntennaThickness, true);
-
-        //pitch-knob
-        var pitchScale = _rightHandJoint is { IsTracked: true } ? 1.5F : 1F;
-        var pitchRadius = Theremin.KnobRadius * pitchScale;
-        DrawCircle(_theremin.PitchKnobPosition, pitchRadius, _theremin.PitchColor, true, -1F, true);
-        DrawCircle(_theremin.PitchKnobPosition, pitchRadius, Colors.Black, false, 1F, true);
-
-        //volume-knob
-        var volumeScale = _leftHandJoint is { IsTracked: true } ? 1.5F : 1F;
-        var volumeRadius = Theremin.KnobRadius * volumeScale;
-        DrawCircle(_theremin.VolumeKnobPosition, volumeRadius, _theremin.VolumeColor, true, -1F, true);
-        DrawCircle(_theremin.VolumeKnobPosition, volumeRadius, Colors.Black, false, 1F, true);
     }
 
     public override void _Process(double delta)
     {
         QueueRedraw();
-    }
 
-    private void _on_state_toggle_button_pressed()
-    {
-        _showStates = !_showStates;
+        if (_leftHandTargetPosition != Vector2.Zero)
+            _leftHandJoint.Position =
+                _leftHandJoint.Position.Lerp(_leftHandTargetPosition, (float)(HandLerpSpeed * delta));
+
+        if (_rightHandTargetPosition != Vector2.Zero)
+            _rightHandJoint.Position =
+                _rightHandJoint.Position.Lerp(_rightHandTargetPosition, (float)(HandLerpSpeed * delta));
+
+        var rightHandSpeed = _rightHandTargetPosition - _previousRightHandTargetPosition;
+        _previousRightHandTargetPosition = _rightHandTargetPosition;
+
+        var stageMovement = new Vector2(-rightHandSpeed.X * PanSpeed, -rightHandSpeed.Y * PanSpeed);
+        var newStagePosition = _stage.Position + stageMovement;
+
+        newStagePosition = new Vector2(
+            Mathf.Clamp(newStagePosition.X, _stage.Position.X - MaxPanDeviation,
+                _stage.Position.X + MaxPanDeviation),
+            Mathf.Clamp(newStagePosition.Y, _stage.Position.Y - MaxPanDeviation,
+                _stage.Position.Y + MaxPanDeviation)
+        );
+
+        _stage.Position = _stage.Position.Lerp(newStagePosition, PanLerpSpeed);
     }
 }
