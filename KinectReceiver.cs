@@ -9,7 +9,7 @@ using Vector2 = Godot.Vector2;
 
 namespace KinectProject;
 
-public partial class KinectReceiver : Node2D
+public partial class KinectReceiver : Control
 {
 	[ExportGroup("Server Settings")] [Export]
 	private string _serverDomain = Environment.MachineName;
@@ -433,7 +433,7 @@ public partial class KinectReceiver : Node2D
 		_rightHandJoint = new Joint();
 		_rightHandCone = new HandCone();
 		_rightHandCone.HandJoint = _rightHandJoint;
-		var vignetteLayer = new CanvasLayer { Layer = 0 };
+		var vignetteLayer = new CanvasLayer { Layer = -1 };
 		vignetteLayer.AddChild(_vignetteColorRect = new ColorRect
 		{
 			Material = new ShaderMaterial { Shader = ResourceLoader.Load<Shader>("Shaders/vignette.gdshader") },

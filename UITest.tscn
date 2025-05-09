@@ -1,6 +1,7 @@
-[gd_scene load_steps=14 format=3 uid="uid://bgf4j3grxy4aj"]
+[gd_scene load_steps=15 format=3 uid="uid://bgf4j3grxy4aj"]
 
 [ext_resource type="Texture2D" uid="uid://di430lrmcmp0b" path="res://Sprites/Environment/curtains.png" id="1_j6gel"]
+[ext_resource type="Script" uid="uid://bvgvkh2h72uml" path="res://KinectReceiver.cs" id="1_r4bte"]
 [ext_resource type="Texture2D" uid="uid://dtyh88bpjs4sr" path="res://Sprites/Environment/BG.png" id="1_u5xaq"]
 [ext_resource type="Texture2D" uid="uid://cbssxam5qpym5" path="res://Sprites/Environment/lectern.png" id="2_q26sf"]
 [ext_resource type="Texture2D" uid="uid://da5ohns5tcuts" path="res://Sprites/Environment/help.png" id="3_q26sf"]
@@ -21,6 +22,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1_r4bte")
 
 [node name="BG" type="TextureRect" parent="."]
 z_index = -10
@@ -76,6 +78,7 @@ layout_mode = 2
 theme_override_constants/separation = 95
 
 [node name="Help" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+z_index = 100
 custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
 texture_normal = ExtResource("3_q26sf")
@@ -109,3 +112,5 @@ layout_mode = 2
 texture_normal = ExtResource("7_wputo")
 texture_pressed = ExtResource("12_5gdvk")
 texture_hover = ExtResource("12_5gdvk")
+
+[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Help" to="." method="_on_help_pressed"]

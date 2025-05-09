@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="KinectProject"
-run/main_scene="uid://d3lg1q1wleqju"
+run/main_scene="uid://bgf4j3grxy4aj"
 config/features=PackedStringArray("4.4", "C#", "Forward Plus")
 config/icon="res://Sprites/icon.svg"
 
