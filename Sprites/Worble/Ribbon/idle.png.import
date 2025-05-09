@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bkvkbcdqyittt"
-path="res://.godot/imported/arms_mid.png-8986a07fd4d03510fd1de6accb27e24c.ctex"
+uid="uid://c3p6if5ciehts"
+path="res://.godot/imported/idle.png-f9010897e86d778e2ea6c2990540f792.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Sprites/Person/Tie/arms_mid.png"
-dest_files=["res://.godot/imported/arms_mid.png-8986a07fd4d03510fd1de6accb27e24c.ctex"]
+source_file="res://Sprites/Worble/Ribbon/idle.png"
+dest_files=["res://.godot/imported/idle.png-f9010897e86d778e2ea6c2990540f792.ctex"]
 
 [params]
 

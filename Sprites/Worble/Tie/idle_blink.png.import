@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://byhjinyw1l2aq"
-path="res://.godot/imported/idle_blink.png-0c64fa959339750464e553c95620ecfa.ctex"
+uid="uid://u6cs362v2ldl"
+path="res://.godot/imported/idle_blink.png-5ebf6056213d944ad9de5cd0991940fc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Sprites/Person/Ribbon/idle_blink.png"
-dest_files=["res://.godot/imported/idle_blink.png-0c64fa959339750464e553c95620ecfa.ctex"]
+source_file="res://Sprites/Worble/Tie/idle_blink.png"
+dest_files=["res://.godot/imported/idle_blink.png-5ebf6056213d944ad9de5cd0991940fc.ctex"]
 
 [params]
 

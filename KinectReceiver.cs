@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Microsoft.AspNet.SignalR.Client;
 using Newtonsoft.Json;
@@ -9,21 +10,46 @@ using Vector2 = Godot.Vector2;
 
 namespace KinectProject;
 
-public partial class KinectReceiver : Node2D
+public partial class KinectReceiver : Control
 {
     [ExportGroup("Server Settings")] [Export]
     private string _serverDomain = Environment.MachineName;
 
     [Export] private int _serverPort = 9000;
 
+    public static class InstrumentResources
+    {
+        public enum Instrument
+        {
+            Sine,
+            Trombone,
+            Viola
+        }
+
+        public static readonly Dictionary<Instrument, string> AudioFiles = new()
+        {
+            { Instrument.Sine, "res://Sounds/sine.wav" },
+            { Instrument.Trombone, "res://Sounds/trombone.wav" },
+            { Instrument.Viola, "res://Sounds/viola.wav" }
+        };
+    }
+
     public class AudioFileSoundStrategy
     {
-        private AudioStreamPlayer2D _player;
+        private readonly AudioStreamPlayer2D _player;
+        private string _currentFileName;
 
-        public void Setup(AudioStreamPlayer2D player, Vector2 position, string fileName)
+        public AudioFileSoundStrategy(AudioStreamPlayer2D player)
         {
-            _player = player;
-            _player.Position = position;
+            _player = player ?? throw new ArgumentNullException(nameof(player));
+            _player.MaxPolyphony = 2;
+        }
+
+        public void LoadAudioFile(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName) || _currentFileName == fileName)
+                return;
+
             var audioStream = ResourceLoader.Load<AudioStream>(fileName);
             if (audioStream == null)
             {
@@ -31,24 +57,31 @@ public partial class KinectReceiver : Node2D
                 return;
             }
 
-            _player.MaxPolyphony = 2;
+            var wasPlaying = _player.Playing;
+
+            _player.Stop();
             _player.Stream = audioStream;
+            _currentFileName = fileName;
+
+            if (wasPlaying) _player.Play();
         }
 
+        public string GetCurrentAudioFile() => _currentFileName;
         public void UpdatePitch(float pitch) => _player.PitchScale = pitch;
         public void UpdateVolume(float volume) => _player.VolumeDb = volume;
         public void Play() => _player.Play();
         public void Stop() => _player.Stop();
     }
 
-    public class Joint
+
+    public partial class Joint : Node2D
     {
-        public Vector2 Position { get; set; }
+        public Vector2 TargetPosition { get; set; }
         public int TrackingState { get; set; }
         public bool IsTracked => TrackingState == 2;
     }
 
-    public partial class HandCone : Area2D
+    public partial class HandCone(Joint handJoint) : Area2D
     {
         private const float MaxRotationChangeDegrees = 20F;
         private const float MovementThreshold = 1F;
@@ -58,8 +91,6 @@ public partial class KinectReceiver : Node2D
 
         private readonly CollisionPolygon2D _collisionPolygon = new();
         public readonly Polygon2D VisualPolygon = new();
-        public Joint HandJoint { get; set; }
-
         private Vector2 _direction = Vector2.Up;
         private Vector2 _previousPosition;
         private float _currentRotation;
@@ -84,23 +115,23 @@ public partial class KinectReceiver : Node2D
 
         private static void OnBodyEntered(Node body)
         {
-            if (body is Person person)
+            if (body is Worble worble)
             {
-                person.SetMouthRadius();
+                worble.SetScale(worble.ActivatedScale);
             }
         }
 
         private static void OnBodyExited(Node body)
         {
-            if (body is Person person)
+            if (body is Worble worble)
             {
-                person.ResetMouthRadius();
+                worble.SetScale(worble.DefaultScale);
             }
         }
 
         public override void _PhysicsProcess(double delta)
         {
-            if (HandJoint?.IsTracked != true)
+            if (handJoint?.IsTracked != true)
             {
                 return;
             }
@@ -110,13 +141,15 @@ public partial class KinectReceiver : Node2D
 
         private void UpdateConeShape()
         {
-            Position = HandJoint.Position + new Vector2(0f, -41f);
+            Position = handJoint.Position + new Vector2(0F, -41F);
 
             var normalizedDirection = _direction.Normalized();
             var perpendicular = new Vector2(-normalizedDirection.Y, normalizedDirection.X);
-            var halfAngle = _coneAngleRadians / 2f;
-            var edge1 = (normalizedDirection * Mathf.Cos(halfAngle) + perpendicular * Mathf.Sin(halfAngle)) * ConeLength;
-            var edge2 = (normalizedDirection * Mathf.Cos(halfAngle) - perpendicular * Mathf.Sin(halfAngle)) * ConeLength;
+            var halfAngle = _coneAngleRadians / 2F;
+            var edge1 = (normalizedDirection * Mathf.Cos(halfAngle) + perpendicular * Mathf.Sin(halfAngle)) *
+                        ConeLength;
+            var edge2 = (normalizedDirection * Mathf.Cos(halfAngle) - perpendicular * Mathf.Sin(halfAngle)) *
+                        ConeLength;
             var points = new[] { Vector2.Zero, edge1, edge2 };
 
             _collisionPolygon.Polygon = points;
@@ -132,12 +165,13 @@ public partial class KinectReceiver : Node2D
 
             var rotationChange = movementDirection.X switch
             {
-                < 0 => -1f,
-                > 0 => 1f,
-                _ => 0f
+                < 0 => -1F,
+                > 0 => 1F,
+                _ => 0F
             };
 
-            _currentRotation = Mathf.Clamp(_currentRotation + rotationChange, -MaxRotationChangeDegrees, MaxRotationChangeDegrees);
+            _currentRotation = Mathf.Clamp(_currentRotation + rotationChange, -MaxRotationChangeDegrees,
+                MaxRotationChangeDegrees);
             _collisionPolygon.RotationDegrees = _currentRotation;
             VisualPolygon.RotationDegrees = _currentRotation;
         }
@@ -147,7 +181,7 @@ public partial class KinectReceiver : Node2D
     {
         private readonly Color _gridColor = new(.3F, .3F, .3F, .15F);
         private readonly int[] _peoplePerRow = [10, 8, 6, 4];
-        private float _cellGridSize;
+        private int _cellGridSize;
 
         public float ScreenWidth { get; private set; }
         public float ScreenHeight { get; private set; }
@@ -166,7 +200,7 @@ public partial class KinectReceiver : Node2D
             ScreenWidth = screenWidth;
             ScreenHeight = screenHeight;
             Position = new Vector2(ScreenWidth / 2F, ScreenHeight / 2F);
-            _cellGridSize = Math.Min(ScreenWidth / 10F, ScreenHeight / 10F);
+            _cellGridSize = (int)Math.Max(ScreenWidth / 20, ScreenHeight / 20);
             PopulatePeople();
         }
 
@@ -175,19 +209,20 @@ public partial class KinectReceiver : Node2D
             foreach (var child in GetChildren()) child.QueueFree();
 
             var totalRows = _peoplePerRow.Length;
-            var vOrigin = -((totalRows - 1) * _cellGridSize);
+            var yOrigin = -(totalRows * _cellGridSize) / 2F;
 
             for (var rowIndex = 0; rowIndex < totalRows; rowIndex++)
             {
                 var peopleInRow = _peoplePerRow[rowIndex];
-                var y = vOrigin + rowIndex * _cellGridSize;
                 var rowWidth = (peopleInRow - 1F) * _cellGridSize;
-                var x = -rowWidth / 2f;
+
+                var x = -rowWidth / 2F;
+                var y = yOrigin + rowIndex * _cellGridSize;
 
                 for (var i = 0; i < peopleInRow; i++)
                 {
                     AddChild(
-                        new Person
+                        new Worble
                         {
                             Position = new Vector2(x + i * _cellGridSize, y)
                         }
@@ -198,7 +233,6 @@ public partial class KinectReceiver : Node2D
 
         public override void _Draw()
         {
-            
             for (var x = -ScreenWidth; x <= ScreenWidth; x += _cellGridSize)
                 DrawLine(new Vector2(x, -ScreenHeight), new Vector2(x, ScreenHeight), _gridColor, -1, true);
 
@@ -207,195 +241,152 @@ public partial class KinectReceiver : Node2D
         }
     }
 
-    public partial class Person : StaticBody2D
+
+    public partial class Worble : StaticBody2D
     {
-        private const float MinMouthRadius = 3F;
-        private const float MaxMouthRadius = 7F;
         private const float MaxSwayAngleDeg = 2F;
         private const float SwaySpeed = 5F;
         private const float MouthLerpSpeed = 7F;
         private const float MinLightEnergy = 1F;
         private const float MaxLightEnergy = 1.5F;
-        private const float MinPitch = .1F;
+        private const float MinPitch = 0.1F;
         private const float MaxPitch = 12F;
         private const float MinVolumeDb = -24F;
         private const float MaxVolumeDb = -8F;
-
-        private AudioFileSoundStrategy _soundStrategy;
-        private string _currentAnimation = "idle";
-        private string _targetAnimation = "idle";
-        private AnimatedSprite2D _sprite;
-        private Light2D _pointLight;
-
+        private const float XScale = .5F;
+        private const float YScale = .5F;
+        public readonly Vector2 DefaultScale = new(1.2F, 1.2F);
+        public readonly Vector2 ActivatedScale = new(1.2F, 1.5F);
         private Vector2 _targetScale = new(1.2F, 1.2F);
-        private float _currentMouthRadius;
-        private float _targetMouthRadius;
-        private float _animatedMouthRadius;
+
+        private readonly AudioFileSoundStrategy _soundStrategy;
+        private readonly AnimatedSprite2D _sprite;
+        private readonly Light2D _pointLight;
+        private readonly string _spriteType;
+        private string _currentAnimation = "idle";
         private float _swayTime;
-        private float _vibratoTime;
-        private float _pitchTime;
-        private float _pitchPhase;
-        private string _spriteType;
+
+        public Worble()
+        {
+            _spriteType = GD.Randf() < 0.5F ? "Tie" : "Ribbon";
+            _sprite = CreateSprite();
+            _pointLight = CreatePointLight();
+            var player = new AudioStreamPlayer2D();
+            AddChild(player);
+            _soundStrategy = new AudioFileSoundStrategy(player);
+        }
 
         public override void _Ready()
         {
-            _spriteType = GD.Randf() < 0.5F ? "Tie" : "Ribbon";
             CollisionLayer = 1;
             CollisionMask = 0;
+            AddChild(_sprite);
+            AddChild(_pointLight);
+            AddChild(CreateCollisionShape());
+            SetupSpriteFrames();
+            _soundStrategy.LoadAudioFile(InstrumentResources.AudioFiles[InstrumentResources.Instrument.Trombone]);
+        }
 
-            var player = new AudioStreamPlayer2D();
-            _soundStrategy = new AudioFileSoundStrategy();
-
-            var collisionShape = new CollisionShape2D
+        private AnimatedSprite2D CreateSprite()
+        {
+            return new AnimatedSprite2D
             {
-                Shape = new CircleShape2D { Radius = 15F },
-                Position = new Vector2(0F, -20F)
-            };
-
-            _sprite = new AnimatedSprite2D
-            {
-                Scale = _targetScale,
+                Scale = DefaultScale,
                 TextureFilter = TextureFilterEnum.LinearWithMipmapsAnisotropic,
-                Material = new CanvasItemMaterial
-                {
-                    LightMode = CanvasItemMaterial.LightModeEnum.Normal
-                }
+                Material = new CanvasItemMaterial { LightMode = CanvasItemMaterial.LightModeEnum.Normal }
             };
+        }
 
-            _pointLight = new PointLight2D
+        private static PointLight2D CreatePointLight()
+        {
+            return new PointLight2D
             {
                 Enabled = true,
                 Visible = true,
                 BlendMode = Light2D.BlendModeEnum.Mix,
-                Texture = ResourceLoader.Load<Texture2D>("Sprites/Lights/light_smoothest.png"),
-                Color = Colors.WhiteSmoke,
+                Texture = ResourceLoader.Load<Texture2D>("res://Sprites/Lights/light_smoothest.png"),
+                Color = Colors.WhiteSmoke
             };
+        }
 
-            SetupSpriteFrames();
-            _soundStrategy.Setup(player, Position, "Sounds/sine440hz.wav");
-            _pitchPhase = (float)GD.RandRange(0F, 2F * Mathf.Pi);
-
-            AddChild(_sprite);
-            AddChild(_pointLight);
-            AddChild(player);
-            AddChild(collisionShape);
+        private static CollisionShape2D CreateCollisionShape()
+        {
+            return new CollisionShape2D
+            {
+                Shape = new CircleShape2D { Radius = 15f },
+                Position = new Vector2(0f, -20f)
+            };
         }
 
         private void SetupSpriteFrames()
         {
             var spriteFrames = new SpriteFrames();
-            var basePath = _spriteType == "Tie" ? "Sprites/Person/Tie/" : "Sprites/Person/Ribbon/";
-
-            spriteFrames.AddAnimation("idle");
-            spriteFrames.AddFrame("idle", ResourceLoader.Load<Texture2D>(basePath + "idle.png"));
-
-            spriteFrames.AddAnimation("idle_blink");
-            spriteFrames.AddFrame("idle_blink", ResourceLoader.Load<Texture2D>(basePath + "idle_blink.png"));
-
-            spriteFrames.AddAnimation("arms_mid");
-            spriteFrames.AddFrame("arms_mid", ResourceLoader.Load<Texture2D>(basePath + "arms_mid.png"));
-
-            spriteFrames.AddAnimation("arms_high");
-            spriteFrames.AddFrame("arms_high", ResourceLoader.Load<Texture2D>(basePath + "arms_high.png"));
-
+            var basePath = $"res://Sprites/Worble/{_spriteType}/";
+            AddAnimation(spriteFrames, "idle", $"{basePath}idle.png");
+            AddAnimation(spriteFrames, "idle_blink", $"{basePath}idle_blink.png");
+            AddAnimation(spriteFrames, "arms_mid", $"{basePath}arms_mid.png");
+            AddAnimation(spriteFrames, "arms_high", $"{basePath}arms_high.png");
             _sprite.SpriteFrames = spriteFrames;
             _sprite.Animation = "idle";
-            _sprite.Play();
+        }
+
+        private static void AddAnimation(SpriteFrames spriteFrames, string animationName, string texturePath)
+        {
+            spriteFrames.AddAnimation(animationName);
+            spriteFrames.AddFrame(animationName, ResourceLoader.Load<Texture2D>(texturePath));
         }
 
         public override void _Process(double delta)
         {
             var deltaF = (float)delta;
 
-            _currentMouthRadius = Mathf.Lerp(_currentMouthRadius, _targetMouthRadius, MouthLerpSpeed * deltaF);
             _sprite.Scale = _sprite.Scale.Lerp(_targetScale, MouthLerpSpeed * deltaF);
-            
-            
-            UpdateBodyAnimation();
-            if (_currentAnimation != _targetAnimation)
-            {
-                _sprite.Play(_currentAnimation = _targetAnimation);
-            }
 
-            if (_currentMouthRadius > 0.01F)
+            if (Math.Abs(_sprite.Scale.X - DefaultScale.X) < .1F)
             {
-                UpdateMouthAnimation(deltaF);
-                UpdateSound();
+                _sprite.Play(_currentAnimation = "idle");
+                _pointLight.Energy = MinLightEnergy;
+                _swayTime = 0F;
+                Rotation = 0F;
+                _soundStrategy.Stop();
             }
             else
             {
-                ResetAnimation();
-                _soundStrategy.Stop();
+                if (GetTree().Root.GetChild(0).GetChild(0) is not Node2D leftHandJoint) return;
+                _pointLight.Energy = MaxLightEnergy;
+                _swayTime += deltaF;
+                Rotation = Mathf.DegToRad(MaxSwayAngleDeg) * Mathf.Sin(_swayTime * SwaySpeed);
+                var normalizedYPosition =
+                    Mathf.Clamp(leftHandJoint.Position.Y / (((Stage)GetParent()).ScreenHeight * YScale), 0F, 1F);
+                var normalizedXPosition =
+                    Mathf.Clamp(leftHandJoint.Position.X / (((Stage)GetParent()).ScreenWidth * XScale), 0F, 1F);
+                var pitch = Mathf.Lerp(MaxPitch, MinPitch, normalizedYPosition);
+                var normalizedPitch = (pitch - MinPitch) / (MaxPitch - MinPitch);
+                var volume = Mathf.Lerp(MinVolumeDb, MaxVolumeDb, normalizedXPosition);
+                _soundStrategy.UpdatePitch(pitch);
+                _soundStrategy.UpdateVolume(volume);
+                _soundStrategy.Play();
+                _sprite.Play(_currentAnimation = normalizedPitch > .5F ? "arms_high" : "arms_mid");
             }
         }
 
-        private void UpdateBodyAnimation()
+        public new void SetScale(Vector2 scale)
         {
-            if (_currentMouthRadius <= 0.01F)
-            {
-                _targetAnimation = "idle";
-                _pointLight.Energy = MinLightEnergy;
-                return;
-            }
-
-            var normalizedRadius = (_currentMouthRadius - MinMouthRadius) / (MaxMouthRadius - MinMouthRadius);
-            var basePitch = Mathf.Lerp(MinPitch, MaxPitch, normalizedRadius);
-            var oscillation = Mathf.Sin(_pitchTime + _pitchPhase);
-            var pitch = Mathf.Clamp(basePitch + oscillation * MaxPitch, MinPitch, MaxPitch);
-            var normalizedPitch = (pitch - MinPitch) / (MaxPitch - MinPitch);
-            _targetAnimation = normalizedPitch > .5F ? "arms_high" : "arms_mid";
+            _targetScale = scale;
         }
 
-        private void UpdateMouthAnimation(float delta)
+        private void ChangeInstrument(InstrumentResources.Instrument instrument)
         {
-            _pointLight.Energy = MaxLightEnergy;
-            _swayTime += delta;
-            _vibratoTime += delta;
-            _pitchTime += delta;
-            Rotation = Mathf.DegToRad(MaxSwayAngleDeg) * Mathf.Sin(_swayTime * SwaySpeed);
-            var mouthPulse = Mathf.Sin(_vibratoTime * Mathf.Sin(_vibratoTime));
-            _animatedMouthRadius = Mathf.Clamp(_currentMouthRadius + mouthPulse, MinMouthRadius, MaxMouthRadius);
-            // var lightIntensity = Mathf.Lerp(MinLightEnergy, MaxLightEnergy, (_animatedMouthRadius - MinMouthRadius) / (MaxMouthRadius - MinMouthRadius));
-            // _pointLight.Energy = lightIntensity;
+            if (InstrumentResources.AudioFiles.TryGetValue(instrument, out var file))
+                _soundStrategy.LoadAudioFile(file);
         }
 
-        private void UpdateSound()
+        public InstrumentResources.Instrument? GetCurrentInstrument()
         {
-            if (_currentMouthRadius <= 0.01F)
-            {
-                _soundStrategy.Stop();
-                return;
-            }
-
-            var normalizedRadius = (_currentMouthRadius - MinMouthRadius) / (MaxMouthRadius - MinMouthRadius);
-            var basePitch = Mathf.Lerp(MinPitch, MaxPitch * .5F, normalizedRadius);
-            var oscillation = Mathf.Sin(_pitchTime * 2F + _pitchPhase) * .5F;
-            var pitch = Mathf.Clamp(basePitch + oscillation * MaxPitch * .5F, MinPitch, MaxPitch);
-            var volume = Mathf.Lerp(MinVolumeDb, MaxVolumeDb, _animatedMouthRadius / MaxMouthRadius);
-            _soundStrategy.UpdatePitch(pitch);
-            _soundStrategy.UpdateVolume(volume);
-            _soundStrategy.Play();
-        }
-
-        private void ResetAnimation()
-        {
-            _swayTime = 0F;
-            _vibratoTime = 0F;
-            Rotation = 0F;
-            _animatedMouthRadius = 0F;
-            _targetAnimation = "idle";
-        }
-
-        public void SetMouthRadius()
-        {
-            _targetMouthRadius = (float)GD.RandRange(MinMouthRadius, MaxMouthRadius);
-            _targetScale = new Vector2(1.3F, 1.3F);
-        }
-
-        public void ResetMouthRadius()
-        {
-            _targetMouthRadius = 0F;
-            _targetScale = new Vector2(1.2F, 1.2F);
+            var currentFile = _soundStrategy.GetCurrentAudioFile();
+            return InstrumentResources.AudioFiles
+                .FirstOrDefault(x => x.Value == currentFile)
+                .Key;
         }
     }
 
@@ -407,8 +398,6 @@ public partial class KinectReceiver : Node2D
     private HubConnection _connection;
     private IHubProxy _hubProxy;
     private ColorRect _vignetteColorRect;
-    private Vector2 _leftHandTargetPosition;
-    private Vector2 _rightHandTargetPosition;
     private Vector2 _previousRightHandTargetPosition;
     private const float KinectDepthCameraWidth = 512F;
     private const float KinectDepthCameraHeight = 424F;
@@ -416,6 +405,7 @@ public partial class KinectReceiver : Node2D
     private const float PanLerpSpeed = .25F;
     private const float MaxPanDeviation = 10F;
     private const float PanSpeed = 0.1F;
+    private const float HandRadius = 40F;
 
     public override void _Ready()
     {
@@ -428,17 +418,21 @@ public partial class KinectReceiver : Node2D
         GetTree().Root.SizeChanged += OnResize;
         SetupCallbacks();
         StartConnection();
+
         _stage = new Stage();
         _leftHandJoint = new Joint();
         _rightHandJoint = new Joint();
-        _rightHandCone = new HandCone();
-        _rightHandCone.HandJoint = _rightHandJoint;
-        var vignetteLayer = new CanvasLayer { Layer = 0 };
+        _rightHandCone = new HandCone(_rightHandJoint);
+
+        var vignetteLayer = new CanvasLayer { Layer = -1 };
         vignetteLayer.AddChild(_vignetteColorRect = new ColorRect
         {
             Material = new ShaderMaterial { Shader = ResourceLoader.Load<Shader>("Shaders/vignette.gdshader") },
-            Size = GetViewport().GetVisibleRect().Size,
+            Size = GetViewport().GetVisibleRect().Size
         });
+
+        AddChild(_leftHandJoint);
+        AddChild(_rightHandJoint);
         AddChild(_stage);
         AddChild(_rightHandCone);
         AddChild(vignetteLayer);
@@ -488,12 +482,13 @@ public partial class KinectReceiver : Node2D
 
         if (projections.TryGetValue("HandLeft", out var leftHandPositions) && leftHandPositions.Count >= 2)
         {
-            _leftHandTargetPosition = CalculateHandPosition(leftHandPositions, spineBase, scaleX, scaleY, sensitivity);
+            _leftHandJoint.TargetPosition =
+                CalculateHandPosition(leftHandPositions, spineBase, scaleX, scaleY, sensitivity);
         }
 
         if (projections.TryGetValue("HandRight", out var rightHandPositions) && rightHandPositions.Count >= 2)
         {
-            _rightHandTargetPosition =
+            _rightHandJoint.TargetPosition =
                 CalculateHandPosition(rightHandPositions, spineBase, scaleX, scaleY, sensitivity);
         }
     }
@@ -536,20 +531,18 @@ public partial class KinectReceiver : Node2D
 
     public override void _Draw()
     {
-        const float handRadius = 40F;
-
         if (_leftHandJoint.IsTracked)
         {
-            DrawCircle(_leftHandJoint.Position, handRadius, Colors.Gray);
-            DrawCircle(_leftHandJoint.Position, handRadius, Colors.DimGray, false, 1F, true);
+            DrawCircle(_leftHandJoint.Position, HandRadius, Colors.Gray);
+            DrawCircle(_leftHandJoint.Position, HandRadius, Colors.DimGray, false, 1F, true);
         }
 
         if (_rightHandJoint.IsTracked)
         {
-            DrawCircle(_rightHandJoint.Position, handRadius, Colors.Gray);
-            DrawCircle(_rightHandJoint.Position, handRadius, Colors.DimGray, false, 1F, true);
+            DrawCircle(_rightHandJoint.Position, HandRadius, Colors.Gray);
+            DrawCircle(_rightHandJoint.Position, HandRadius, Colors.DimGray, false, 1F, true);
             var stickDirection = new Vector2(0, -1).Rotated(_rightHandCone.VisualPolygon.Rotation).Normalized();
-            var stickStartPoint = _rightHandJoint.Position + stickDirection * handRadius;
+            var stickStartPoint = _rightHandJoint.Position + stickDirection * HandRadius;
             var stickEndPoint = stickStartPoint + stickDirection * 150F;
             DrawLine(stickStartPoint, stickEndPoint, Colors.DimGray, 4F, true);
         }
@@ -559,16 +552,16 @@ public partial class KinectReceiver : Node2D
     {
         QueueRedraw();
 
-        if (_leftHandTargetPosition != Vector2.Zero)
+        if (_leftHandJoint.TargetPosition != Vector2.Zero)
             _leftHandJoint.Position =
-                _leftHandJoint.Position.Lerp(_leftHandTargetPosition, (float)(HandLerpSpeed * delta));
+                _leftHandJoint.Position.Lerp(_leftHandJoint.TargetPosition, (float)(HandLerpSpeed * delta));
 
-        if (_rightHandTargetPosition != Vector2.Zero)
+        if (_rightHandJoint.TargetPosition != Vector2.Zero)
             _rightHandJoint.Position =
-                _rightHandJoint.Position.Lerp(_rightHandTargetPosition, (float)(HandLerpSpeed * delta));
+                _rightHandJoint.Position.Lerp(_rightHandJoint.TargetPosition, (float)(HandLerpSpeed * delta));
 
-        var rightHandSpeed = _rightHandTargetPosition - _previousRightHandTargetPosition;
-        _previousRightHandTargetPosition = _rightHandTargetPosition;
+        var rightHandSpeed = _rightHandJoint.TargetPosition - _previousRightHandTargetPosition;
+        _previousRightHandTargetPosition = _rightHandJoint.TargetPosition;
 
         var stageMovement = new Vector2(-rightHandSpeed.X * PanSpeed, -rightHandSpeed.Y * PanSpeed);
         var newStagePosition = _stage.Position + stageMovement;

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dabsty4dfeget"
-path="res://.godot/imported/arms_high.png-4d8664f96ab901a9b8ae2ed810540e59.ctex"
+uid="uid://bkvkbcdqyittt"
+path="res://.godot/imported/arms_mid.png-277cc7ee507ca50abf61c20d807eeb12.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Sprites/Person/Ribbon/arms_high.png"
-dest_files=["res://.godot/imported/arms_high.png-4d8664f96ab901a9b8ae2ed810540e59.ctex"]
+source_file="res://Sprites/Worble/Tie/arms_mid.png"
+dest_files=["res://.godot/imported/arms_mid.png-277cc7ee507ca50abf61c20d807eeb12.ctex"]
 
 [params]
 
