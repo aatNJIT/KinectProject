@@ -2,11 +2,7 @@
 
 importer="wav"
 type="AudioStreamWAV"
-<<<<<<< HEAD
-uid="uid://bfja0kk0laxjr"
-=======
-uid="uid://cu7hpdrc56rtd"
->>>>>>> 9f6170b5f32e00fd65b757ea77e709d764f444c7
+uid="uid://bsiuo65obffku"
 path="res://.godot/imported/sine.wav-b313695352a10f5ec3c3ccee897f248a.sample"
 
 [deps]
@@ -22,7 +18,7 @@ force/max_rate=false
 force/max_rate_hz=44100
 edit/trim=false
 edit/normalize=false
-edit/loop_mode=2
+edit/loop_mode=0
 edit/loop_begin=0
-edit/loop_end=440999
+edit/loop_end=-1
 compress/mode=2

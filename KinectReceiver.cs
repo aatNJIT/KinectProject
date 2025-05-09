@@ -231,14 +231,15 @@ public partial class KinectReceiver : Control
             }
         }
 
-        public override void _Draw()
+        private void DrawGrid()
         {
             for (var x = -ScreenWidth; x <= ScreenWidth; x += _cellGridSize)
                 DrawLine(new Vector2(x, -ScreenHeight), new Vector2(x, ScreenHeight), _gridColor, -1, true);
-
+            
             for (var y = -ScreenHeight; y <= ScreenHeight; y += _cellGridSize)
                 DrawLine(new Vector2(-ScreenWidth, y), new Vector2(ScreenWidth, y), _gridColor, -1, true);
         }
+        
     }
 
 
@@ -424,11 +425,12 @@ public partial class KinectReceiver : Control
         _rightHandJoint = new Joint();
         _rightHandCone = new HandCone(_rightHandJoint);
 
-        var vignetteLayer = new CanvasLayer { Layer = -1 };
+        var vignetteLayer = new CanvasLayer { Layer = 1 };
         vignetteLayer.AddChild(_vignetteColorRect = new ColorRect
         {
             Material = new ShaderMaterial { Shader = ResourceLoader.Load<Shader>("Shaders/vignette.gdshader") },
-            Size = GetViewport().GetVisibleRect().Size
+            Size = GetViewport().GetVisibleRect().Size,
+            MouseFilter = MouseFilterEnum.Ignore
         });
 
         AddChild(_leftHandJoint);
