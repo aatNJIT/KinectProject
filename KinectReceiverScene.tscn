@@ -1,0 +1,116 @@
+[gd_scene load_steps=15 format=3 uid="uid://cv14clmjhbsjp"]
+
+[ext_resource type="Script" uid="uid://bvgvkh2h72uml" path="res://KinectReceiver.cs" id="1_c14la"]
+[ext_resource type="Texture2D" uid="uid://dtyh88bpjs4sr" path="res://Sprites/Environment/BG.png" id="2_n7pbh"]
+[ext_resource type="Texture2D" uid="uid://di430lrmcmp0b" path="res://Sprites/Environment/curtains.png" id="3_lyxt8"]
+[ext_resource type="Texture2D" uid="uid://cbssxam5qpym5" path="res://Sprites/Environment/lectern.png" id="4_sie2i"]
+[ext_resource type="Texture2D" uid="uid://da5ohns5tcuts" path="res://Sprites/Environment/help.png" id="5_iein1"]
+[ext_resource type="Texture2D" uid="uid://cobxfb7utp3jj" path="res://Sprites/Environment/helppressed.png" id="6_5diy2"]
+[ext_resource type="Texture2D" uid="uid://cepg7ibalse63" path="res://Sprites/Environment/mic.png" id="7_bvej3"]
+[ext_resource type="Texture2D" uid="uid://ccqgw6kjkg2mw" path="res://Sprites/Environment/micpressed.png" id="8_appsp"]
+[ext_resource type="Texture2D" uid="uid://betetftmt4ojw" path="res://Sprites/Environment/pause.png" id="9_uh561"]
+[ext_resource type="Texture2D" uid="uid://0ad031mpcjwr" path="res://Sprites/Environment/pausepressed.png" id="10_web2g"]
+[ext_resource type="Texture2D" uid="uid://bp3oaaansdiph" path="res://Sprites/Environment/trumpet.png" id="11_weryc"]
+[ext_resource type="Texture2D" uid="uid://dxuqkmoxw33i8" path="res://Sprites/Environment/trumpetpressed.png" id="12_u18fw"]
+[ext_resource type="Texture2D" uid="uid://5fe8cqge371g" path="res://Sprites/Environment/piano.png" id="13_5ukr0"]
+[ext_resource type="Texture2D" uid="uid://c5jo64ib58fbr" path="res://Sprites/Environment/pianopressed.png" id="14_evqxc"]
+
+[node name="UiTest" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_c14la")
+
+[node name="BG" type="TextureRect" parent="."]
+z_index = -10
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_n7pbh")
+
+[node name="Curtains" type="TextureRect" parent="."]
+z_index = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("3_lyxt8")
+
+[node name="Lectern" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -264.0
+grow_horizontal = 2
+grow_vertical = 0
+texture = ExtResource("4_sie2i")
+stretch_mode = 3
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.16
+anchor_top = 0.883
+anchor_right = 0.84
+anchor_bottom = 1.0
+offset_left = -0.400009
+offset_top = -0.192017
+offset_right = 0.399902
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="CenterContainer"]
+layout_mode = 2
+theme_override_constants/margin_bottom = 90
+
+[node name="HBoxContainer" type="HBoxContainer" parent="CenterContainer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 95
+
+[node name="Help" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+z_index = 100
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+texture_normal = ExtResource("5_iein1")
+texture_pressed = ExtResource("6_5diy2")
+texture_hover = ExtResource("6_5diy2")
+
+[node name="Mic" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+texture_normal = ExtResource("7_bvej3")
+texture_pressed = ExtResource("8_appsp")
+texture_hover = ExtResource("8_appsp")
+
+[node name="Pause" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+texture_normal = ExtResource("9_uh561")
+texture_pressed = ExtResource("10_web2g")
+texture_hover = ExtResource("10_web2g")
+
+[node name="Trumpet" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+texture_normal = ExtResource("11_weryc")
+texture_pressed = ExtResource("12_u18fw")
+texture_hover = ExtResource("12_u18fw")
+
+[node name="Piano" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+texture_normal = ExtResource("13_5ukr0")
+texture_pressed = ExtResource("14_evqxc")
+texture_hover = ExtResource("14_evqxc")
+
+[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Help" to="." method="_on_help_pressed"]

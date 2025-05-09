@@ -2,7 +2,11 @@
 
 importer="wav"
 type="AudioStreamWAV"
+<<<<<<< HEAD
 uid="uid://bfja0kk0laxjr"
+=======
+uid="uid://cu7hpdrc56rtd"
+>>>>>>> 9f6170b5f32e00fd65b757ea77e709d764f444c7
 path="res://.godot/imported/sine.wav-b313695352a10f5ec3c3ccee897f248a.sample"
 
 [deps]
