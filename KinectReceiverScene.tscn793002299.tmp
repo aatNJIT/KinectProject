@@ -93,7 +93,7 @@ custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
 toggle_mode = true
 texture_normal = ExtResource("7_bvej3")
-texture_pressed = ExtResource("8_appsp")
+texture_pressed = ExtResource("9_uh561")
 texture_hover = ExtResource("8_appsp")
 script = ExtResource("9_lyxt8")
 
