@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3 uid="uid://cv14clmjhbsjp"]
+[gd_scene load_steps=21 format=3 uid="uid://cv14clmjhbsjp"]
 
 [ext_resource type="Script" uid="uid://beeyanc3hmuym" path="res://KinectReceiver.cs" id="1_c14la"]
 [ext_resource type="Texture2D" uid="uid://dtyh88bpjs4sr" path="res://Sprites/Environment/BG.png" id="2_n7pbh"]
@@ -13,12 +13,11 @@
 [ext_resource type="Texture2D" uid="uid://dn8mu2iea31hx" path="res://Sprites/Environment/michover.png" id="9_sie2i"]
 [ext_resource type="Texture2D" uid="uid://betetftmt4ojw" path="res://Sprites/Environment/pause.png" id="9_uh561"]
 [ext_resource type="Texture2D" uid="uid://0ad031mpcjwr" path="res://Sprites/Environment/pausepressed.png" id="10_web2g"]
-[ext_resource type="Texture2D" uid="uid://bp3oaaansdiph" path="res://Sprites/Environment/trumpet.png" id="11_weryc"]
-[ext_resource type="Texture2D" uid="uid://dxuqkmoxw33i8" path="res://Sprites/Environment/trumpetpressed.png" id="12_u18fw"]
 [ext_resource type="Texture2D" uid="uid://5fe8cqge371g" path="res://Sprites/Environment/piano.png" id="13_5ukr0"]
 [ext_resource type="Texture2D" uid="uid://oe2ltdtm56x" path="res://Sprites/Environment/pausehover.png" id="14_5diy2"]
 [ext_resource type="Texture2D" uid="uid://c5jo64ib58fbr" path="res://Sprites/Environment/pianopressed.png" id="14_evqxc"]
-[ext_resource type="Texture2D" uid="uid://x6lumuwpwt32" path="res://Sprites/Environment/trumpethover.png" id="17_bvej3"]
+[ext_resource type="Texture2D" uid="uid://capwt1eyv1adn" path="res://Sprites/Environment/sine.png" id="15_appsp"]
+[ext_resource type="Texture2D" uid="uid://d0g1s5hhdghll" path="res://Sprites/Environment/sinepressed.png" id="16_appsp"]
 [ext_resource type="Texture2D" uid="uid://ckw5y6vurxqu6" path="res://Sprites/Environment/pianohover.png" id="20_appsp"]
 
 [sub_resource type="AudioStreamMicrophone" id="AudioStreamMicrophone_lyxt8"]
@@ -33,7 +32,7 @@ grow_vertical = 2
 script = ExtResource("1_c14la")
 
 [node name="BG" type="TextureRect" parent="."]
-z_index = -10
+z_index = -3000
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -43,7 +42,7 @@ grow_vertical = 2
 texture = ExtResource("2_n7pbh")
 
 [node name="Curtains" type="TextureRect" parent="."]
-z_index = 1
+z_index = -3000
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -53,27 +52,33 @@ grow_vertical = 2
 texture = ExtResource("3_lyxt8")
 
 [node name="Lectern" type="TextureRect" parent="."]
+z_index = -3000
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -264.0
+offset_left = 1.0
+offset_top = -222.0
+offset_right = 1.0
+offset_bottom = 42.0
 grow_horizontal = 2
 grow_vertical = 0
 texture = ExtResource("4_sie2i")
 stretch_mode = 3
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
+z_index = -3000
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.16
 anchor_top = 0.883
 anchor_right = 0.84
 anchor_bottom = 1.0
-offset_left = -0.400009
-offset_top = -0.192017
-offset_right = 0.399902
+offset_left = -10.2
+offset_top = -76.64
+offset_right = -9.40002
+offset_bottom = 7.0
 grow_horizontal = 2
 grow_vertical = 0
 
@@ -86,12 +91,22 @@ layout_mode = 2
 theme_override_constants/separation = 95
 
 [node name="Help" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+visible = false
 z_index = 100
 custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
+toggle_mode = true
 texture_normal = ExtResource("5_iein1")
 texture_pressed = ExtResource("6_5diy2")
 texture_hover = ExtResource("7_iein1")
+
+[node name="Pause" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+toggle_mode = true
+texture_normal = ExtResource("9_uh561")
+texture_pressed = ExtResource("10_web2g")
+texture_hover = ExtResource("14_5diy2")
 
 [node name="Mic" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
 custom_minimum_size = Vector2(120, 120)
@@ -102,31 +117,29 @@ texture_pressed = ExtResource("8_appsp")
 texture_hover = ExtResource("9_sie2i")
 script = ExtResource("9_lyxt8")
 
-[node name="Pause" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
+[node name="Sine" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
 custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
-texture_normal = ExtResource("9_uh561")
-texture_pressed = ExtResource("10_web2g")
-texture_hover = ExtResource("14_5diy2")
-
-[node name="Trumpet" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
-custom_minimum_size = Vector2(120, 120)
-layout_mode = 2
-texture_normal = ExtResource("11_weryc")
-texture_pressed = ExtResource("12_u18fw")
-texture_hover = ExtResource("17_bvej3")
+toggle_mode = true
+button_pressed = true
+texture_normal = ExtResource("15_appsp")
+texture_pressed = ExtResource("16_appsp")
+texture_hover = ExtResource("16_appsp")
 
 [node name="Piano" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
 custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
+toggle_mode = true
 texture_normal = ExtResource("13_5ukr0")
 texture_pressed = ExtResource("14_evqxc")
 texture_hover = ExtResource("20_appsp")
 
 [node name="AudioStreamRecorder" type="AudioStreamPlayer" parent="."]
 stream = SubResource("AudioStreamMicrophone_lyxt8")
-autoplay = true
 bus = &"Record"
 
-[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Help" to="." method="_on_help_pressed"]
+[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Help" to="." method="OnHelp"]
+[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Pause" to="." method="OnPause"]
 [connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Mic" to="CenterContainer/MarginContainer/HBoxContainer/Mic" method="_on_pressed"]
+[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Sine" to="." method="OnTrumpet"]
+[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Piano" to="." method="OnPiano"]

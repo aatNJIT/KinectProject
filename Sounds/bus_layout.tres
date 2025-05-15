@@ -1,9 +1,18 @@
-[gd_resource type="AudioBusLayout" load_steps=2 format=3 uid="uid://d6c17w36pc2g"]
+[gd_resource type="AudioBusLayout" load_steps=3 format=3 uid="uid://d6c17w36pc2g"]
+
+[sub_resource type="AudioEffectDistortion" id="AudioEffectDistortion_gk63c"]
+resource_name = "Distortion"
+mode = 2
+pre_gain = 15.14
+drive = 1.0
 
 [sub_resource type="AudioEffectRecord" id="AudioEffectRecord_gk63c"]
 resource_name = "Record"
+format = 0
 
 [resource]
+bus/0/effect/0/effect = SubResource("AudioEffectDistortion_gk63c")
+bus/0/effect/0/enabled = true
 bus/1/name = &"Record"
 bus/1/solo = false
 bus/1/mute = true
