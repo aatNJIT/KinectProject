@@ -44,8 +44,8 @@ public partial class KinectReceiver : Control
     {
         private readonly AudioStreamPlayer2D _player;
         private string _currentFileName;
-        private readonly int _busIndex; 
-        private readonly Dictionary<string, AudioEffect> _effects; 
+        private readonly int _busIndex;
+        private readonly Dictionary<string, AudioEffect> _effects;
 
         public AudioFileSoundStrategy(AudioStreamPlayer2D player, string busName = "SoundEffects")
         {
@@ -97,7 +97,7 @@ public partial class KinectReceiver : Control
 
         public void UpdatePitch(float pitch) => _player.PitchScale = pitch;
 
-        public void UpdateVolume(float volume) => _player.VolumeDb =volume;
+        public void UpdateVolume(float volume) => _player.VolumeDb = volume;
 
         public void Play() => _player.Play();
 
@@ -111,7 +111,7 @@ public partial class KinectReceiver : Control
             {
                 return;
             }
-            
+
             var effect = new T();
             _effects.Add(effectName, effect);
             AudioServer.AddBusEffect(_busIndex, effect);
@@ -139,26 +139,25 @@ public partial class KinectReceiver : Control
 
             AudioServer.RemoveBusEffect(_busIndex, effectIdx);
             _effects.Remove(effectName);
-            effect.Free();
         }
 
         public void EditEffect(string effectName, string parameterName, Variant value)
         {
             if (!_effects.TryGetValue(effectName, out var effect))
             {
-                GD.PrintErr("Effect "+ effectName + " not found...");
+                GD.PrintErr("Effect " + effectName + " not found...");
                 return;
             }
 
             if (!effect.HasMethod(parameterName))
             {
-                GD.PrintErr("Parameter "+ parameterName + " not found...");
+                GD.PrintErr("Parameter " + parameterName + " not found...");
                 return;
             }
-            
+
             effect.Set(parameterName, value);
         }
-        
+
         public void SetEffectState(string effectName, bool enabled)
         {
             if (!_effects.ContainsKey(effectName))
@@ -364,15 +363,15 @@ public partial class KinectReceiver : Control
         private const float MaxLightEnergy = 0.1F;
         private const float MinPitch = 0.1F;
         private const float MaxPitch = 8F;
-        private const float MinVolumeDb = -24F;
-        private const float MaxVolumeDb = -8F;
+        private const float MinVolumeDb = -8F;
+        private const float MaxVolumeDb = -2F;
         private const float XScale = .5F;
         private const float YScale = .5F;
         public readonly Vector2 DefaultScale = new(1.2F, 1.2F);
-        public readonly Vector2 ActivatedScale = new(1.3F, 1.3F);   
+        public readonly Vector2 ActivatedScale = new(1.3F, 1.3F);
         private Vector2 _targetScale = new(1.2F, 1.2F);
 
-        private readonly AudioFileSoundStrategy _soundStrategy;
+        public readonly AudioFileSoundStrategy SoundStrategy;
         private readonly AnimatedSprite2D _sprite;
         private readonly Light2D _pointLight;
         private readonly string _spriteType;
@@ -386,7 +385,7 @@ public partial class KinectReceiver : Control
             _pointLight = CreatePointLight();
             var player = new AudioStreamPlayer2D();
             AddChild(player);
-            _soundStrategy = new AudioFileSoundStrategy(player);
+            SoundStrategy = new AudioFileSoundStrategy(player);
         }
 
         public override void _Ready()
@@ -397,7 +396,7 @@ public partial class KinectReceiver : Control
             AddChild(_pointLight);
             AddChild(CreateCollisionShape());
             SetupSpriteFrames();
-            _soundStrategy.LoadAudioFile(InstrumentResources.AudioFiles[InstrumentResources.Instrument.Sine]);
+            SoundStrategy.LoadAudioFile(InstrumentResources.AudioFiles[InstrumentResources.Instrument.Sine]);
         }
 
         private AnimatedSprite2D CreateSprite()
@@ -461,7 +460,7 @@ public partial class KinectReceiver : Control
                 _pointLight.Energy = MinLightEnergy;
                 _swayTime = 0F;
                 Rotation = 0F;
-                if (_soundStrategy.IsPlaying()) _soundStrategy.Stop();
+                if (SoundStrategy.IsPlaying()) SoundStrategy.Stop();
             }
             else
             {
@@ -477,9 +476,9 @@ public partial class KinectReceiver : Control
                 var normalizedPitch = Math.Clamp((pitch - MinPitch) / (MaxPitch - MinPitch), 0F, 1F);
                 var volume = Mathf.Lerp(MinVolumeDb, MaxVolumeDb, normalizedXPosition);
                 _sprite.Play(_currentAnimation = normalizedPitch > .5F ? "arms_high" : "arms_mid");
-                _soundStrategy.UpdatePitch(pitch);
-                _soundStrategy.UpdateVolume(volume);
-                if (!_soundStrategy.IsPlaying()) _soundStrategy.Play();
+                SoundStrategy.UpdatePitch(pitch);
+                SoundStrategy.UpdateVolume(volume);
+                if (!SoundStrategy.IsPlaying()) SoundStrategy.Play();
             }
         }
 
@@ -490,23 +489,23 @@ public partial class KinectReceiver : Control
 
         public void SetMuted(bool muted)
         {
-            _soundStrategy.Muted = muted;
+            SoundStrategy.Muted = muted;
         }
 
         public bool IsMuted()
         {
-            return _soundStrategy.Muted;
+            return SoundStrategy.Muted;
         }
 
         public void ChangeInstrument(InstrumentResources.Instrument instrument)
         {
             if (InstrumentResources.AudioFiles.TryGetValue(instrument, out var file))
-                _soundStrategy.LoadAudioFile(file);
+                SoundStrategy.LoadAudioFile(file);
         }
 
         private InstrumentResources.Instrument? GetCurrentInstrument()
         {
-            var currentFile = _soundStrategy.GetCurrentAudioFile();
+            var currentFile = SoundStrategy.GetCurrentAudioFile();
             return InstrumentResources.AudioFiles
                 .FirstOrDefault(x => x.Value == currentFile)
                 .Key;
@@ -530,11 +529,11 @@ public partial class KinectReceiver : Control
     private HubConnection _connection;
     private IHubProxy _hubProxy;
     private bool _helpToggled;
+    private bool _delayToggled;
     private ColorRect _vignetteColorRect;
-    private TextureButton _helpButton;
     private TextureButton _pauseButton;
     private TextureButton _recordingButton;
-    private TextureButton _trumpetButton;
+    private TextureButton _sineButton;
     private TextureButton _pianoButton;
     private bool _wasLeftHandJointClosed;
     private bool _wasRightHandJointClosed;
@@ -573,10 +572,6 @@ public partial class KinectReceiver : Control
 
         var hBoxContainer = GetTree().GetRoot().GetChild(0).GetChild(3).GetChild(0).GetChild(0);
 
-        if (hBoxContainer.GetChild(0) is TextureButton hButton)
-        {
-            _helpButton = hButton;
-        }
 
         if (hBoxContainer.GetChild(1) is TextureButton pButton)
         {
@@ -590,7 +585,7 @@ public partial class KinectReceiver : Control
 
         if (hBoxContainer.GetChild(3) is TextureButton trumpetButton)
         {
-            _trumpetButton = trumpetButton;
+            _sineButton = trumpetButton;
         }
 
         if (hBoxContainer.GetChild(4) is TextureButton pianoButton)
@@ -807,7 +802,7 @@ public partial class KinectReceiver : Control
 
         _stage.Position = _stage.Position.Lerp(newStagePosition, PanLerpSpeed);
 
-        TextureButton[] buttons = [_helpButton, _pauseButton, _recordingButton, _trumpetButton, _pianoButton];
+        TextureButton[] buttons = [_pauseButton, _recordingButton, _sineButton, _pianoButton];
         foreach (var button in buttons)
         {
             var buttonRect = button.GetGlobalRect();
@@ -837,12 +832,6 @@ public partial class KinectReceiver : Control
         _wasRightHandJointClosed = _rightHandJoint.IsClosed;
     }
 
-    private void OnTrumpet()
-    {
-        ToggleAllButtons(_trumpetButton);
-        _stage.ChangeWorbleInstruments(InstrumentResources.Instrument.Trumpet);
-    }
-
     private void OnRecordingEnd()
     {
         ToggleAllButtons(_recordingButton);
@@ -853,11 +842,36 @@ public partial class KinectReceiver : Control
     {
         ToggleAllButtons(_recordingButton);
     }
+    
+    private void OnSine()
+    {
+        ToggleAllButtons(_sineButton);
+        _stage.ChangeWorbleInstruments(InstrumentResources.Instrument.Sine);
+    }
 
     private void OnPiano()
     {
         ToggleAllButtons(_pianoButton);
         _stage.ChangeWorbleInstruments(InstrumentResources.Instrument.Piano);
+    }
+
+    private void OnDelay()
+    {
+        _delayToggled = !_delayToggled;
+        foreach (var child in _stage.GetChildren())
+        {
+            if (child is not Worble worble) continue;
+            if (_delayToggled)
+            {
+                worble.SoundStrategy.AddEffect<AudioEffectDelay>("Delay");
+                worble.SoundStrategy.AddEffect<AudioEffectCompressor>("Compressor");
+            }
+            else
+            {
+                worble.SoundStrategy.RemoveEffect("Delay");
+                worble.SoundStrategy.RemoveEffect("Compressor");
+            }
+        }
     }
 
     private void OnPause()
@@ -877,7 +891,7 @@ public partial class KinectReceiver : Control
 
     private void ToggleAllButtons(TextureButton exception)
     {
-        TextureButton[] buttons = [_helpButton, _pauseButton, _recordingButton, _trumpetButton, _pianoButton];
+        TextureButton[] buttons = [_pauseButton, _recordingButton, _sineButton, _pianoButton];
         foreach (var button in buttons)
         {
             if (button == exception)

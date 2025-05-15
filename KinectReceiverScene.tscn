@@ -1,13 +1,12 @@
-[gd_scene load_steps=21 format=3 uid="uid://cv14clmjhbsjp"]
+[gd_scene load_steps=20 format=3 uid="uid://cv14clmjhbsjp"]
 
 [ext_resource type="Script" uid="uid://beeyanc3hmuym" path="res://KinectReceiver.cs" id="1_c14la"]
 [ext_resource type="Texture2D" uid="uid://dtyh88bpjs4sr" path="res://Sprites/Environment/BG.png" id="2_n7pbh"]
 [ext_resource type="Texture2D" uid="uid://di430lrmcmp0b" path="res://Sprites/Environment/curtains.png" id="3_lyxt8"]
 [ext_resource type="Texture2D" uid="uid://cbssxam5qpym5" path="res://Sprites/Environment/lectern.png" id="4_sie2i"]
-[ext_resource type="Texture2D" uid="uid://da5ohns5tcuts" path="res://Sprites/Environment/help.png" id="5_iein1"]
-[ext_resource type="Texture2D" uid="uid://cobxfb7utp3jj" path="res://Sprites/Environment/helppressed.png" id="6_5diy2"]
+[ext_resource type="Texture2D" uid="uid://b1m22hppqb1ed" path="res://Sprites/Environment/delay.png" id="5_uh561"]
+[ext_resource type="Texture2D" uid="uid://bhfvbxhkoe85e" path="res://Sprites/Environment/delaypresed.png" id="6_web2g"]
 [ext_resource type="Texture2D" uid="uid://cepg7ibalse63" path="res://Sprites/Environment/mic.png" id="7_bvej3"]
-[ext_resource type="Texture2D" uid="uid://156t6olmck4c" path="res://Sprites/Environment/helphover.png" id="7_iein1"]
 [ext_resource type="Texture2D" uid="uid://ccqgw6kjkg2mw" path="res://Sprites/Environment/micpressed.png" id="8_appsp"]
 [ext_resource type="Script" uid="uid://dwyv3at5rg1b1" path="res://mic.gd" id="9_lyxt8"]
 [ext_resource type="Texture2D" uid="uid://dn8mu2iea31hx" path="res://Sprites/Environment/michover.png" id="9_sie2i"]
@@ -76,9 +75,9 @@ anchor_top = 0.883
 anchor_right = 0.84
 anchor_bottom = 1.0
 offset_left = -10.2
-offset_top = -76.64
+offset_top = -143.64
 offset_right = -9.40002
-offset_bottom = 7.0
+offset_bottom = -60.0
 grow_horizontal = 2
 grow_vertical = 0
 
@@ -90,15 +89,14 @@ theme_override_constants/margin_bottom = 90
 layout_mode = 2
 theme_override_constants/separation = 95
 
-[node name="Help" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
-visible = false
+[node name="Delay" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
 z_index = 100
 custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
 toggle_mode = true
-texture_normal = ExtResource("5_iein1")
-texture_pressed = ExtResource("6_5diy2")
-texture_hover = ExtResource("7_iein1")
+texture_normal = ExtResource("5_uh561")
+texture_pressed = ExtResource("6_web2g")
+texture_hover = ExtResource("6_web2g")
 
 [node name="Pause" type="TextureButton" parent="CenterContainer/MarginContainer/HBoxContainer"]
 custom_minimum_size = Vector2(120, 120)
@@ -138,8 +136,8 @@ texture_hover = ExtResource("20_appsp")
 stream = SubResource("AudioStreamMicrophone_lyxt8")
 bus = &"Record"
 
-[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Help" to="." method="OnHelp"]
+[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Delay" to="." method="OnDelay"]
 [connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Pause" to="." method="OnPause"]
 [connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Mic" to="CenterContainer/MarginContainer/HBoxContainer/Mic" method="_on_pressed"]
-[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Sine" to="." method="OnTrumpet"]
+[connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Sine" to="." method="OnSine"]
 [connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Piano" to="." method="OnPiano"]
