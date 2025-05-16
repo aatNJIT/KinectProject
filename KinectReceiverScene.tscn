@@ -134,6 +134,7 @@ texture_hover = ExtResource("20_appsp")
 
 [node name="AudioStreamRecorder" type="AudioStreamPlayer" parent="."]
 stream = SubResource("AudioStreamMicrophone_lyxt8")
+autoplay = true
 bus = &"Record"
 
 [connection signal="pressed" from="CenterContainer/MarginContainer/HBoxContainer/Delay" to="." method="OnDelay"]
